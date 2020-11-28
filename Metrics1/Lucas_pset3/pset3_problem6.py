@@ -8,7 +8,7 @@ import pandas as pd
 import scipy.integrate as integrate
 import math
 import gurobipy as gp
-from gurobipy import GRB
+from gurobipy import *
 
 D = np.array([.12, .29, .48, .78])
 D = D.reshape((len(D), 1))
@@ -91,10 +91,6 @@ class estimand:
 		return beta_s
 
 
-yo = estimand(D,Z)
-print(yo.beta_iv)
-print(yo.beta_tsls)
-print(yo.beta_att)
 
 # construct the gammas
 class gamma:
@@ -121,7 +117,7 @@ class gamma:
 		return math.comb(self.K, k)*(u**k)*((1-u)**(self.K-k))
 
 
-	def gamma_star(self, k):
+	def gamma_star_k(self, k):
 		gamma_s0 = 0
 		gamma_s1 = 0
 		for i in list(range(1, len(self.D)+1)):
@@ -130,9 +126,9 @@ class gamma:
 			integral = integrate.quad(self.bernstein, self.Dflat[i-1], self.Dflat[i], args = k)[0]
 			gamma_s0 += w0*integral
 			gamma_s1 += w1*integral
-		return(gamma_s0, gamma_s1)
+		return [gamma_s0, gamma_s1]
 
-	def gamma_iv(self, k):
+	def gamma_iv_k(self, k):
 		gamma_s0 = 0
 		gamma_s1 = 0
 		for i in list(range(1, len(self.D)+1)):
@@ -142,9 +138,9 @@ class gamma:
 			integral1 = integrate.quad(self.bernstein, self.Dflat[i-1], self.Dflat[i], args = k)[0]
 			gamma_s0 += w0*integral0
 			gamma_s1 += w1*integral1
-		return(gamma_s0, gamma_s1)
+		return [gamma_s0, gamma_s1]
 
-	def gamma_tsls(self, k):
+	def gamma_tsls_k(self, k):
 		gamma_s0 = 0
 		gamma_s1 = 0
 		for i in list(range(1, len(self.D)+1)):
@@ -154,16 +150,38 @@ class gamma:
 			integral1 = integrate.quad(self.bernstein, self.Dflat[i-1], self.Dflat[i], args = k)[0]
 			gamma_s0 += w0*integral0
 			gamma_s1 += w1*integral1
-		return(gamma_s0, gamma_s1)
+		return [gamma_s0, gamma_s1]
 
 
 
 
-hi = gamma(D, Z, 1)
-print(hi.gamma_star(0))
-print(hi.gamma_star(1))
-print(hi.gamma_iv(0))
-print(hi.gamma_iv(1))
-print(hi.gamma_tsls(0))
-print(hi.gamma_tsls(1))
+# Time to implement the solver
+
+def solver(K, D, Z, max = True):
+	estimandK = estimand(D, Z)
+	gammaK = gamma(D, Z, K)
+	gamma_star = []
+	gamma_iv = []
+	gamma_tsls = []
+	for k in range(K+1):
+		gamma_star.append(gammaK.gamma_star_k(k))
+		gamma_iv.append(gammaK.gamma_iv_k(k))
+		gamma_tsls.append(gammaK.gamma_tsls_k(k))
+
+
+	model = gp.Model('GetBounds')
+	# Create decision variables for the model
+	theta = model.addVars(K+1, 2, lb = 0, ub = 1)
+	model.addConstr((sum(theta[i,j] * gamma_iv[i][j] for i in range(K+1) for j in range(2)) == estimandK.beta_iv), name = 'IV')
+	model.addConstr((sum(theta[i,j] * gamma_tsls[i][j] for i in range(K+1) for j in range(2)) == estimandK.beta_tsls), name = 'TSLS')
+	if max:
+		model.setObjective((sum(theta[i,j] * gamma_star[i][j] for i in range(K+1) for j in range(2))), GRB.MAXIMIZE)
+	else:
+		model.setObjective((sum(theta[i,j] * gamma_star[i][j] for i in range(K+1) for j in range(2))), GRB.MAXIMIZE)
+	model.optimize()
+	return model.objVal
+	
+	# solution = model.getAttr(theta)
+
+solver(7, D, Z)
 
