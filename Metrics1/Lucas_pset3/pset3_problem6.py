@@ -101,19 +101,10 @@ class gamma:
 		Dflat = self.D.flatten()
 		Dflat = np.insert(Dflat, 0, 0)
 		self.Dflat = np.insert(Dflat, len(self.D)+1, 1)
-		coeflist = []
-		powerlist = []
-		for k in range(self.K):
-			for i in list(range(k, self.K+1)):
-				coeflist.append((-1)**(i-k) * math.comb(self.K, i) * math.comb(i, k))
-				powerlist.append(i)
-		self.coeflist = np.array(coeflist)
-		self.powerlist = np.array(powerlist)
 		self.estimate = estimand(D, Z)
 
 	# uses list of coefficients and powers to construct a function
 	def bernstein(self, u, k):
-		#return np.sum(np.multiply(self.coeflist, np.power(u, self.powerlist)))
 		return math.comb(self.K, k)*(u**k)*((1-u)**(self.K-k))
 
 
@@ -168,20 +159,37 @@ def solver(K, D, Z, max = True):
 		gamma_iv.append(gammaK.gamma_iv_k(k))
 		gamma_tsls.append(gammaK.gamma_tsls_k(k))
 
+	# add monotonicity into the solver
+	mono_constraint = np.zeros((K, K+1))
+	for k in range(K):
+		mono_constraint[k, k] = 1
+		mono_constraint[k, k+1] = -1
+
+
+	print(mono_constraint)
+	print(len(gamma_iv))
+
+
 
 	model = gp.Model('GetBounds')
 	# Create decision variables for the model
 	theta = model.addVars(K+1, 2, lb = 0, ub = 1)
 	model.addConstr((sum(theta[i,j] * gamma_iv[i][j] for i in range(K+1) for j in range(2)) == estimandK.beta_iv), name = 'IV')
 	model.addConstr((sum(theta[i,j] * gamma_tsls[i][j] for i in range(K+1) for j in range(2)) == estimandK.beta_tsls), name = 'TSLS')
+	for k in range(K):
+		model.addConstr((sum(theta[i, 0] * mono_constraint[k, i] for i in range(K+1)) <= 0))
+		model.addConstr((sum(theta[i, 1] * mono_constraint[k, i] for i in range(K+1)) <= 0))
 	if max:
 		model.setObjective((sum(theta[i,j] * gamma_star[i][j] for i in range(K+1) for j in range(2))), GRB.MAXIMIZE)
 	else:
-		model.setObjective((sum(theta[i,j] * gamma_star[i][j] for i in range(K+1) for j in range(2))), GRB.MAXIMIZE)
+		model.setObjective((sum(theta[i,j] * gamma_star[i][j] for i in range(K+1) for j in range(2))), GRB.MINIMIZE)
+	
+
 	model.optimize()
+
+	print(model.objVal)
 	return model.objVal
 	
-	# solution = model.getAttr(theta)
 
-solver(7, D, Z)
+solver(19, D, Z)
 
