@@ -94,7 +94,7 @@ class mtr_estimates:
 		D = np.concatenate([np.zeros(len(self.U0)), np.ones(len(self.U1))])
 
 
-		# WHY are these all virtually identical???
+		# this is def not the right way to solve for this
 		ATE = np.mean(Y1) - np.mean(Y0)
 		ATT = np.mean(self.Y1) - np.mean(Y0_imputed)
 		ATU = np.mean(Y1_imputed) - np.mean(self.Y0)
@@ -116,15 +116,21 @@ class mtr_estimates:
 		X1 = np.hstack((np.hstack((self.C1, self.U1)), self.X1))
 		X0 = np.hstack((np.hstack((self.C0, self.U0)), self.X0))
 		Xbar = np.mean(self.X, axis = 0)
-		print(Xbar)
 		coefs0, coefs1 = self.mtr_helper(X1, X0)
 
 		Uplot = np.arange(0, 1, .001)
+		Xsplot = np.repeat([Xbar], len(Uplot), axis = 0)
+		Xsplot = np.insert(Xsplot, 0, Uplot, axis = 1)
+		Xsplot = np.insert(Xsplot, 0, np.ones(len(Uplot)), axis = 1)
 
-		Xsplot = np.repeat(Xbar, len(Uplot), axis = 1)
-		print(Xsplot.shape)
+		M0 = np.dot(coefs0.T, Xsplot.T)
+		M1 = np.dot(coefs1.T, Xsplot.T)
+		MTEplot = (M1 - M0).flatten()
 
-		#Y1plot = 
+		fig, ax = plt.subplots()
+		ax.plot(Uplot, MTEplot, '.', markersize = .8, color = 'dodgerblue')
+		plt.show()
+		
 		
 
 

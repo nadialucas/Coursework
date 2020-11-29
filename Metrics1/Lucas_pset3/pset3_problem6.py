@@ -276,8 +276,7 @@ def plot_polys(maxK, D, Z):
 	plt.ylim([-1, .3])
 	plt.xticks(np.arange(min(X), max(X)+1, 1.0))
 	plt.xlim(1, 19)
-	ax.set(xlabel='Polynomial degree (K)', ylabel='Upper and Lower Bounds',
-	       title="Figure 6 Replication")
+	ax.set(xlabel='Polynomial degree (K)', ylabel='Upper and Lower Bounds')
 	fig.savefig("fig6.png")
 
 plot_polys(19, D, Z)
