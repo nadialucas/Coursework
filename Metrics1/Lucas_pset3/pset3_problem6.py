@@ -263,28 +263,27 @@ def plot_polys(maxK, D, Z):
 
 	fig, ax = plt.subplots()
 	# style of data points
-	ax.plot(X, maxYpoly, '-o', markersize = 2, color='dodgerblue')
-	ax.plot(X, minYpoly, '-o', markersize = 2, color='dodgerblue')
-	ax.plot(X, maxYmono, '-x', markersize = 2, color='red')
-	ax.plot(X, minYmono, '-x', markersize = 2, color='red')
-	ax.plot(X, attY, '-v', markersize = 2, color = 'black')
-	ax.plot(X, maxNPY, '-o', markersize = 2, color = 'pink')
-	ax.plot(X, minNPY, '-o', markersize = 2, color = 'pink')
-	ax.plot(X, maxNPYmono, '-o', markersize = 2, color = 'yellow')
-	ax.plot(X, minNPYmono, '-o', markersize = 2, color = 'yellow')
-	# predicted means
-	#ax.plot(plot_x, means_y, color = 'dodgerblue', alpha = 0.7)
-	# shade in the standard deviation around the means
-	ax.set(xlabel='X', ylabel='Y',
-	       title="Figure 6")
+	ax.plot(X, maxYpoly, '-o', markersize = 2.5, linewidth = .4, color='dodgerblue', label = 'Polynomial')
+	ax.plot(X, minYpoly, '-o', markersize = 2.5, linewidth = .4, color='dodgerblue')
+	ax.plot(X, maxYmono, '-s', markersize = 2.5, linewidth = .4, color='coral', label = 'Polynomial and decreasing')
+	ax.plot(X, minYmono, '-s', markersize = 2.5, linewidth = .4, color='coral')
+	ax.plot(X, attY, ':*', markersize = 2.5, linewidth = .4, color = 'black', label = 'ATT')
+	ax.plot(X, maxNPY, '--o', markersize = 2.5, linewidth = .4, color = 'dodgerblue', label = 'Nonparametric')
+	ax.plot(X, minNPY, '--o', markersize = 2.5, linewidth = .4, color = 'dodgerblue')
+	ax.plot(X, maxNPYmono, '--s', markersize = 2.5, linewidth = .4, color = 'coral', label = 'Nonparametric and decreasing')
+	ax.plot(X, minNPYmono, '--s', markersize = 2.5, linewidth = .4, color = 'coral')
+	ax.legend(loc='lower left', fontsize = 8)
+	plt.ylim([-1, .3])
+	plt.xticks(np.arange(min(X), max(X)+1, 1.0))
+	plt.xlim(1, 19)
+	ax.set(xlabel='Polynomial degree (K)', ylabel='Upper and Lower Bounds',
+	       title="Figure 6 Replication")
 	fig.savefig("fig6.png")
-	plt.show()
-	print(att)
 
 plot_polys(19, D, Z)
 
-# debug my ATT issues
-# print(solver(1, D, Z, True, False))
+
+
 
 
 
