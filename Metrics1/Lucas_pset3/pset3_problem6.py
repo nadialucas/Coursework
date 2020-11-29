@@ -30,7 +30,6 @@ class estimand:
 		# uses all the helper function to return the estimands
 		self.beta_iv = self.beta_s(self.w_iv0, self.w_iv1)
 		self.beta_tsls = self.beta_s(self.w_tsls0, self.w_tsls1)
-		self.beta_att = self.beta_s(self.w_att0, self.w_att1, True)
 
 	def m0(self, u):
 		return 0.9 - 1.1*u + 0.3*u**2
@@ -118,6 +117,9 @@ class gamma:
 	def bernstein(self, u, k):
 		return math.comb(self.K, k)*(u**k)*((1-u)**(self.K-k))
 
+	def constant_spline(self, u):
+		return 1
+
 	def gamma_star_k(self, k):
 		gamma_s0 = 0
 		gamma_s1 = 0
@@ -151,6 +153,30 @@ class gamma:
 			integral1 = integrate.quad(self.bernstein, self.Dflat[i-1], self.Dflat[i], args = k)[0]
 			gamma_s0 += w0*integral0
 			gamma_s1 += w1*integral1
+		return [gamma_s0, gamma_s1]
+
+	def gamma_star_spline(self):
+		diff = [self.Dflat[i+1] - self.Dflat[i] for i in range(len(self.Dflat)-1)]
+		diff0 = diff[:-1]
+		diff1 = diff[1:]
+		gamma_s0 = np.multiply(diff0, self.estimate.w_att0)
+		gamma_s1 = np.multiply(diff1, self.estimate.w_att1)
+		return [gamma_s0, gamma_s1]
+
+	def gamma_iv_spline(self):
+		diff = [self.Dflat[i+1] - self.Dflat[i] for i in range(len(self.Dflat)-1)]
+		diff0 = diff[:-1]
+		diff1 = diff[1:]
+		gamma_s0 = np.multiply(diff0, self.estimate.w_iv0)
+		gamma_s1 = np.multiply(diff1, self.estimate.w_iv1)
+		return [gamma_s0, gamma_s1]
+
+	def gamma_tsls_spline(self):
+		diff = [self.Dflat[i+1] - self.Dflat[i] for i in range(len(self.Dflat)-1)]
+		diff0 = diff[:-1]
+		diff1 = diff[1:]
+		gamma_s0 = np.multiply(diff0, self.estimate.w_tsls0)
+		gamma_s1 = np.multiply(diff1, self.estimate.w_tsls1)
 		return [gamma_s0, gamma_s1]
 
 
@@ -193,22 +219,59 @@ def solver(K, D, Z, max, monotonic):
 	model.optimize()
 	return model.objVal
 	
-att = estimand(D,Z).beta_att
-print(att)
+# att = estimand(D,Z).beta_att
+# print(att)
+
+def splines(max, monotonic):
+	K = 4
+	estimandK = estimand(D, Z)
+	gamma_spline = gamma(D, Z, K)
+	gamma_star_spline = gamma_spline.gamma_star_spline()
+	gamma_iv_spline = gamma_spline.gamma_iv_spline()
+	gamma_tsls_spline = gamma_spline.gamma_tsls_spline()
+
+	print(gamma_star_spline)
+	print(gamma_iv_spline)
+
+	# add monotonicity into the solver (decreasing)
+	mono_constraint = np.zeros((K, K+1))
+	for k in range(K):
+		mono_constraint[k, k] = 1
+		mono_constraint[k, k+1] = -1
+
+	model = gp.Model('GetBounds')
+	# Create decision variables for the model
+	theta = model.addVars(K, 2, lb = 0, ub = 1)
+	model.addConstr((sum(theta[i,j] * gamma_iv_spline[j][i] for i in range(K) for j in range(2)) == estimandK.beta_iv), name = 'IV')
+	model.addConstr((sum(theta[i,j] * gamma_tsls_spline[j][i] for i in range(K) for j in range(2)) == estimandK.beta_tsls), name = 'TSLS')
+	if monotonic:
+		for k in range(K):
+			model.addConstr((sum(theta[i, 0] * mono_constraint[k, i] for i in range(K)) <= 0))
+			model.addConstr((sum(theta[i, 1] * mono_constraint[k, i] for i in range(K)) <= 0))
+	if max:
+		model.setObjective((sum(theta[i,j] * gamma_star_spline[j][i] for i in range(K) for j in range(2))), GRB.MAXIMIZE)
+	else:
+		model.setObjective((sum(theta[i,j] * gamma_star_spline[j][i] for i in range(K) for j in range(2))), GRB.MINIMIZE)
+
+
+	model.optimize()
+	return(model.objVal)
 
 def plot_polys(maxK, D, Z):
-	att = estimand(D,Z).beta_att
 	X = list(range(1, maxK+1))
 	maxYpoly = []
 	minYpoly = []
 	maxYmono = []
 	minYmono = []
-	attY = att*np.ones(maxK)
 	for K in list(range(1, maxK+1)):
 		maxYpoly.append(solver(K, D, Z, True, False))
 		minYpoly.append(solver(K, D, Z, False, False))
 		maxYmono.append(solver(K, D, Z, True, True))
 		minYmono.append(solver(K, D, Z, False, True))
+	att = maxYpoly[0]
+	attY = att*np.ones(maxK)
+	maxNPY = splines(True, False)*np.ones(maxK)
+	minNPY = splines(False, False)*np.ones(maxK)
 
 	fig, ax = plt.subplots()
 	# style of data points
@@ -217,6 +280,8 @@ def plot_polys(maxK, D, Z):
 	ax.plot(X, maxYmono, '-x', markersize = 2, color='red')
 	ax.plot(X, minYmono, '-x', markersize = 2, color='red')
 	ax.plot(X, attY, '-v', markersize = 2, color = 'black')
+	ax.plot(X, maxNPY, '-o', markersize = 2, color = 'pink')
+	ax.plot(X, minNPY, '-o', markersize = 2, color = 'pink')
 	# predicted means
 	#ax.plot(plot_x, means_y, color = 'dodgerblue', alpha = 0.7)
 	# shade in the standard deviation around the means
@@ -226,7 +291,16 @@ def plot_polys(maxK, D, Z):
 	plt.show()
 	print(att)
 
-#plot_polys(19, D, Z)
+plot_polys(19, D, Z)
 
 # debug my ATT issues
-print(solver(1, D, Z, True, False))
+#print(solver(1, D, Z, True, False))
+
+
+
+
+
+
+
+
+
