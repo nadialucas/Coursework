@@ -103,15 +103,28 @@ class mtr_estimates:
 		print(ATU)
 
 		# what are we supposed to be plotting???
+		# Evaluate X at the mean
 
-		fig, ax = plt.subplots()
-		ax.plot(Uplot, MTE_impute, '.', markersize =.8, color='dodgerblue')
-		plt.show()
+
+		# fig, ax = plt.subplots()
+		# ax.plot(Uplot, MTE_impute, '.', markersize =.8, color='dodgerblue')
+		# plt.show()
+
+		return(coefs0, coefs1)
 
 	def mtr1(self):
 		X1 = np.hstack((np.hstack((self.C1, self.U1)), self.X1))
 		X0 = np.hstack((np.hstack((self.C0, self.U0)), self.X0))
-		self.mtr_helper(X1, X0)
+		Xbar = np.mean(self.X, axis = 0)
+		print(Xbar)
+		coefs0, coefs1 = self.mtr_helper(X1, X0)
+
+		Uplot = np.arange(0, 1, .001)
+
+		Xsplot = np.repeat(Xbar, len(Uplot), axis = 1)
+		print(Xsplot.shape)
+
+		#Y1plot = 
 		
 
 

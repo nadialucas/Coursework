@@ -24,12 +24,13 @@ class estimand:
 		self.D = D
 		self.Z = Z
 		# sanity check that these match up with figure 4
-		self.w_iv0, self.w_iv1 = self.w_iv()
-		self.w_tsls0, self.w_tsls1 = self.w_tsls()
-		self.w_att0, self.w_att1 = self.w_att()
+		self.w_iv = self.w_iv()
+		self.w_tsls = self.w_tsls()
+		self.w_att = self.w_att()
 		# uses all the helper function to return the estimands
-		self.beta_iv = self.beta_s(self.w_iv0, self.w_iv1)
-		self.beta_tsls = self.beta_s(self.w_tsls0, self.w_tsls1)
+		self.beta_iv = self.beta_s(self.w_iv)
+		self.beta_tsls = self.beta_s(self.w_tsls)
+		self.beta_att = self.beta_s(self.w_att, True)
 
 	def m0(self, u):
 		return 0.9 - 1.1*u + 0.3*u**2
@@ -51,11 +52,9 @@ class estimand:
 		EZZ = np.dot(Ztilde.T, Ztilde)/len(self.Z)
 		Pi = np.dot(EZX.T, np.linalg.inv(EZZ))
 		s = np.dot(np.dot(np.linalg.inv(np.dot(Pi, EZX)), Pi), Ztilde)[1]
-		# transform s into weights
-		for j in range(len(self.D)):
-			weights0.append(sum(s[:j+1])/len(self.D))
-			weights1.append(sum(s[j:])/len(self.D))
-		return weights0, weights1
+		s = np.insert(s, 0, 0)
+		weights = np.cumsum(s)/len(self.D)
+		return weights
 
 	# IV weights coming from table 3
 	def w_iv(self):
@@ -69,37 +68,28 @@ class estimand:
 		for z in self.Z:
 			s=(z[0]-EZ)/CovDZ
 			s_list.append(s)
-		for j in range(len(self.D)):
-			weights0.append(sum(s_list[:j+1])/len(self.D))
-			weights1.append(sum(s_list[j:])/len(self.D))
-		return weights0, weights1
+		s = np.insert(s_list, 0, 0)
+		weights = np.cumsum(s)/len(self.D)
+		return weights
 
 	def w_att(self):
 		ED = np.sum(self.D)/len(self.D)
-		s = (1.0/ED)*np.ones(len(self.D))
-		weights1 = []
-		for j in range(len(self.D)):
-			weights1.append(sum(s[j:])/len(self.D))
-		weights0 = np.multiply(-1.0, weights1)
-		return weights0, weights1
+		weights = (-1.0/ED)*np.array([1, .75, .5, .25, 0])
+		return weights
 
 	# somehow this is wrong for beta_att but it seems minor and everything else worked (ignoring for now)
-	def beta_s(self, weights0, weights1, att = False):
+	def beta_s(self, weights, att = False):
 		beta_s = 0
 		Dflat = self.D.flatten()
 		Dflat = np.insert(Dflat, 0, 0)
 		Dflat = np.insert(Dflat, len(self.D)+1, 1)
-		for i in list(range(1, len(self.D)+1)):
-			w0 = weights0[i-1]
-			w1 = weights1[i-1]
-			if att:
-				integral0 = integrate.quad(self.m0, Dflat[i-1], Dflat[i])[0]
-			else:
-				integral0 = integrate.quad(self.m0, Dflat[i], Dflat[i+1])[0]
-			integral1 = integrate.quad(self.m1, Dflat[i-1], Dflat[i])[0]
+		for i in list(range(len(Dflat)-1)):
+			w0 = weights[i]
+			w1 = -1.0*weights[i]
+			integral0 = integrate.quad(self.m0, Dflat[i], Dflat[i+1])[0]
+			integral1 = integrate.quad(self.m1, Dflat[i], Dflat[i+1])[0]
 			beta_s += (w0*integral0 + w1*integral1)
 		return beta_s
-
 
 
 # construct the gammas
@@ -123,9 +113,9 @@ class gamma:
 	def gamma_star_k(self, k):
 		gamma_s0 = 0
 		gamma_s1 = 0
-		for i in list(range(1, len(self.D)+1)):
-			w0 = self.estimate.w_att0[i-1]
-			w1 = self.estimate.w_att1[i-1]
+		for i in list(range(1, len(self.Dflat))):
+			w0 = self.estimate.w_att[i-1]
+			w1 = -1.0*self.estimate.w_att[i-1]
 			integral = integrate.quad(self.bernstein, self.Dflat[i-1], self.Dflat[i], args = k)[0]
 			gamma_s0 += w0*integral
 			gamma_s1 += w1*integral
@@ -134,49 +124,41 @@ class gamma:
 	def gamma_iv_k(self, k):
 		gamma_s0 = 0
 		gamma_s1 = 0
-		for i in list(range(1, len(self.D)+1)):
-			w0 = self.estimate.w_iv0[i-1]
-			w1 = self.estimate.w_iv1[i-1]
-			integral0 = integrate.quad(self.bernstein, self.Dflat[i], self.Dflat[i+1], args=k)[0]
-			integral1 = integrate.quad(self.bernstein, self.Dflat[i-1], self.Dflat[i], args = k)[0]
-			gamma_s0 += w0*integral0
-			gamma_s1 += w1*integral1
+		for i in list(range(1, len(self.Dflat))):
+			w0 = self.estimate.w_iv[i-1]
+			w1 = -1.0*self.estimate.w_iv[i-1]
+			integral = integrate.quad(self.bernstein, self.Dflat[i-1], self.Dflat[i], args = k)[0]
+			gamma_s0 += w0*integral
+			gamma_s1 += w1*integral
 		return [gamma_s0, gamma_s1]
 
 	def gamma_tsls_k(self, k):
 		gamma_s0 = 0
 		gamma_s1 = 0
-		for i in list(range(1, len(self.D)+1)):
-			w0 = self.estimate.w_tsls0[i-1]
-			w1 = self.estimate.w_tsls1[i-1]
-			integral0 = integrate.quad(self.bernstein, self.Dflat[i], self.Dflat[i+1], args=k)[0]
-			integral1 = integrate.quad(self.bernstein, self.Dflat[i-1], self.Dflat[i], args = k)[0]
-			gamma_s0 += w0*integral0
-			gamma_s1 += w1*integral1
+		for i in list(range(1, len(self.Dflat))):
+			w0 = self.estimate.w_tsls[i-1]
+			w1 = -1.0*self.estimate.w_tsls[i-1]
+			integral = integrate.quad(self.bernstein, self.Dflat[i-1], self.Dflat[i], args=k)[0]
+			gamma_s0 += w0*integral
+			gamma_s1 += w1*integral
 		return [gamma_s0, gamma_s1]
 
 	def gamma_star_spline(self):
 		diff = [self.Dflat[i+1] - self.Dflat[i] for i in range(len(self.Dflat)-1)]
-		diff0 = diff[:-1]
-		diff1 = diff[1:]
-		gamma_s0 = np.multiply(diff0, self.estimate.w_att0)
-		gamma_s1 = np.multiply(diff1, self.estimate.w_att1)
+		gamma_s0 = np.multiply(diff, self.estimate.w_att)
+		gamma_s1 = np.multiply(diff, -1.0*self.estimate.w_att)
 		return [gamma_s0, gamma_s1]
 
 	def gamma_iv_spline(self):
 		diff = [self.Dflat[i+1] - self.Dflat[i] for i in range(len(self.Dflat)-1)]
-		diff0 = diff[:-1]
-		diff1 = diff[1:]
-		gamma_s0 = np.multiply(diff0, self.estimate.w_iv0)
-		gamma_s1 = np.multiply(diff1, self.estimate.w_iv1)
+		gamma_s0 = np.multiply(diff, self.estimate.w_iv)
+		gamma_s1 = np.multiply(diff, -1.0*self.estimate.w_iv)
 		return [gamma_s0, gamma_s1]
 
 	def gamma_tsls_spline(self):
 		diff = [self.Dflat[i+1] - self.Dflat[i] for i in range(len(self.Dflat)-1)]
-		diff0 = diff[:-1]
-		diff1 = diff[1:]
-		gamma_s0 = np.multiply(diff0, self.estimate.w_tsls0)
-		gamma_s1 = np.multiply(diff1, self.estimate.w_tsls1)
+		gamma_s0 = np.multiply(diff, self.estimate.w_tsls)
+		gamma_s1 = np.multiply(diff, -1.0*self.estimate.w_tsls)
 		return [gamma_s0, gamma_s1]
 
 
@@ -194,6 +176,10 @@ def solver(K, D, Z, max, monotonic):
 		gamma_star.append(gammaK.gamma_star_k(k))
 		gamma_iv.append(gammaK.gamma_iv_k(k))
 		gamma_tsls.append(gammaK.gamma_tsls_k(k))
+	print('gamas')
+	print(gamma_star)
+	print(gamma_iv)
+	print(gamma_tsls)
 
 	# add monotonicity into the solver (decreasing)
 	mono_constraint = np.zeros((K, K+1))
@@ -235,7 +221,7 @@ def splines(max, monotonic):
 
 	# add monotonicity into the solver (decreasing)
 	mono_constraint = np.zeros((K, K+1))
-	for k in range(K):
+	for k in range(K-1):
 		mono_constraint[k, k] = 1
 		mono_constraint[k, k+1] = -1
 
@@ -258,6 +244,7 @@ def splines(max, monotonic):
 	return(model.objVal)
 
 def plot_polys(maxK, D, Z):
+	att = estimandK = estimand(D, Z).beta_att
 	X = list(range(1, maxK+1))
 	maxYpoly = []
 	minYpoly = []
@@ -268,10 +255,11 @@ def plot_polys(maxK, D, Z):
 		minYpoly.append(solver(K, D, Z, False, False))
 		maxYmono.append(solver(K, D, Z, True, True))
 		minYmono.append(solver(K, D, Z, False, True))
-	att = maxYpoly[0]
 	attY = att*np.ones(maxK)
 	maxNPY = splines(True, False)*np.ones(maxK)
 	minNPY = splines(False, False)*np.ones(maxK)
+	maxNPYmono = splines(True, True)*np.ones(maxK)
+	minNPYmono = splines(False, True)*np.ones(maxK)
 
 	fig, ax = plt.subplots()
 	# style of data points
@@ -282,6 +270,8 @@ def plot_polys(maxK, D, Z):
 	ax.plot(X, attY, '-v', markersize = 2, color = 'black')
 	ax.plot(X, maxNPY, '-o', markersize = 2, color = 'pink')
 	ax.plot(X, minNPY, '-o', markersize = 2, color = 'pink')
+	ax.plot(X, maxNPYmono, '-o', markersize = 2, color = 'yellow')
+	ax.plot(X, minNPYmono, '-o', markersize = 2, color = 'yellow')
 	# predicted means
 	#ax.plot(plot_x, means_y, color = 'dodgerblue', alpha = 0.7)
 	# shade in the standard deviation around the means
@@ -294,7 +284,7 @@ def plot_polys(maxK, D, Z):
 plot_polys(19, D, Z)
 
 # debug my ATT issues
-#print(solver(1, D, Z, True, False))
+# print(solver(1, D, Z, True, False))
 
 
 
