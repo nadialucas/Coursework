@@ -80,14 +80,15 @@ class estimand:
 	# somehow this is wrong for beta_att but it seems minor and everything else worked (ignoring for now)
 	def beta_s(self, weights, att = False):
 		beta_s = 0
-		Dflat = self.D.flatten()
-		Dflat = np.insert(Dflat, 0, 0)
-		Dflat = np.insert(Dflat, len(self.D)+1, 1)
-		for i in list(range(len(Dflat)-1)):
+		# construct a list that includes all the bounds for integration
+		bounds = self.D.flatten()
+		bounds = np.insert(bounds, 0, 0)
+		bounds = np.insert(bounds, len(self.D)+1, 1)
+		for i in list(range(len(bounds)-1)):
 			w0 = weights[i]
 			w1 = -1.0*weights[i]
-			integral0 = integrate.quad(self.m0, Dflat[i], Dflat[i+1])[0]
-			integral1 = integrate.quad(self.m1, Dflat[i], Dflat[i+1])[0]
+			integral0 = integrate.quad(self.m0, bounds[i], bounds[i+1])[0]
+			integral1 = integrate.quad(self.m1, bounds[i], bounds[i+1])[0]
 			beta_s += (w0*integral0 + w1*integral1)
 		return beta_s
 
@@ -98,25 +99,25 @@ class gamma:
 		self.D = D
 		self.Z = Z
 		self.K = K
-		Dflat = self.D.flatten()
-		Dflat = np.insert(Dflat, 0, 0)
-		self.Dflat = np.insert(Dflat, len(self.D)+1, 1)
+		# constructing a list that includes all the bounds for integration
+		bounds = self.D.flatten()
+		bounds = np.insert(bounds, 0, 0)
+		self.bounds = np.insert(bounds, len(self.D)+1, 1)
+		# now create intervals from the bounds
+		self.intervals = [self.bounds[i+1] - self.bounds[i] for i in range(len(self.bounds)-1)]
 		self.estimate = estimand(D, Z)
 
 	# regular Bernstein function
 	def bernstein(self, u, k):
 		return math.comb(self.K, k)*(u**k)*((1-u)**(self.K-k))
 
-	def constant_spline(self, u):
-		return 1
-
 	def gamma_star_k(self, k):
 		gamma_s0 = 0
 		gamma_s1 = 0
-		for i in list(range(1, len(self.Dflat))):
+		for i in list(range(1, len(self.bounds))):
 			w0 = self.estimate.w_att[i-1]
 			w1 = -1.0*self.estimate.w_att[i-1]
-			integral = integrate.quad(self.bernstein, self.Dflat[i-1], self.Dflat[i], args = k)[0]
+			integral = integrate.quad(self.bernstein, self.bounds[i-1], self.bounds[i], args = k)[0]
 			gamma_s0 += w0*integral
 			gamma_s1 += w1*integral
 		return [gamma_s0, gamma_s1]
@@ -124,10 +125,10 @@ class gamma:
 	def gamma_iv_k(self, k):
 		gamma_s0 = 0
 		gamma_s1 = 0
-		for i in list(range(1, len(self.Dflat))):
+		for i in list(range(1, len(self.bounds))):
 			w0 = self.estimate.w_iv[i-1]
 			w1 = -1.0*self.estimate.w_iv[i-1]
-			integral = integrate.quad(self.bernstein, self.Dflat[i-1], self.Dflat[i], args = k)[0]
+			integral = integrate.quad(self.bernstein, self.bounds[i-1], self.bounds[i], args = k)[0]
 			gamma_s0 += w0*integral
 			gamma_s1 += w1*integral
 		return [gamma_s0, gamma_s1]
@@ -135,30 +136,27 @@ class gamma:
 	def gamma_tsls_k(self, k):
 		gamma_s0 = 0
 		gamma_s1 = 0
-		for i in list(range(1, len(self.Dflat))):
+		for i in list(range(1, len(self.bounds))):
 			w0 = self.estimate.w_tsls[i-1]
 			w1 = -1.0*self.estimate.w_tsls[i-1]
-			integral = integrate.quad(self.bernstein, self.Dflat[i-1], self.Dflat[i], args=k)[0]
+			integral = integrate.quad(self.bernstein, self.bounds[i-1], self.bounds[i], args=k)[0]
 			gamma_s0 += w0*integral
 			gamma_s1 += w1*integral
 		return [gamma_s0, gamma_s1]
 
 	def gamma_star_spline(self):
-		diff = [self.Dflat[i+1] - self.Dflat[i] for i in range(len(self.Dflat)-1)]
-		gamma_s0 = np.multiply(diff, self.estimate.w_att)
-		gamma_s1 = np.multiply(diff, -1.0*self.estimate.w_att)
+		gamma_s0 = np.multiply(self.intervals, self.estimate.w_att)
+		gamma_s1 = np.multiply(self.intervals, -1.0*self.estimate.w_att)
 		return [gamma_s0, gamma_s1]
 
 	def gamma_iv_spline(self):
-		diff = [self.Dflat[i+1] - self.Dflat[i] for i in range(len(self.Dflat)-1)]
-		gamma_s0 = np.multiply(diff, self.estimate.w_iv)
-		gamma_s1 = np.multiply(diff, -1.0*self.estimate.w_iv)
+		gamma_s0 = np.multiply(self.intervals, self.estimate.w_iv)
+		gamma_s1 = np.multiply(self.intervals, -1.0*self.estimate.w_iv)
 		return [gamma_s0, gamma_s1]
 
 	def gamma_tsls_spline(self):
-		diff = [self.Dflat[i+1] - self.Dflat[i] for i in range(len(self.Dflat)-1)]
-		gamma_s0 = np.multiply(diff, self.estimate.w_tsls)
-		gamma_s1 = np.multiply(diff, -1.0*self.estimate.w_tsls)
+		gamma_s0 = np.multiply(self.intervals, self.estimate.w_tsls)
+		gamma_s1 = np.multiply(self.intervals, -1.0*self.estimate.w_tsls)
 		return [gamma_s0, gamma_s1]
 
 
@@ -167,7 +165,7 @@ class gamma:
 # Time to implement the solver
 
 def solver(K, D, Z, max, monotonic):
-	estimandK = estimand(D, Z)
+	iv_estimand = estimand(D, Z)
 	gammaK = gamma(D, Z, K)
 	gamma_star = []
 	gamma_iv = []
@@ -187,11 +185,11 @@ def solver(K, D, Z, max, monotonic):
 		mono_constraint[k, k] = 1
 		mono_constraint[k, k+1] = -1
 
-	model = gp.Model('GetBounds')
+	model = gp.Model('M')
 	# Create decision variables for the model
 	theta = model.addVars(K+1, 2, lb = 0, ub = 1)
-	model.addConstr((sum(theta[i,j] * gamma_iv[i][j] for i in range(K+1) for j in range(2)) == estimandK.beta_iv), name = 'IV')
-	model.addConstr((sum(theta[i,j] * gamma_tsls[i][j] for i in range(K+1) for j in range(2)) == estimandK.beta_tsls), name = 'TSLS')
+	model.addConstr((sum(theta[i,j] * gamma_iv[i][j] for i in range(K+1) for j in range(2)) == iv_estimand.beta_iv), name = 'IV')
+	model.addConstr((sum(theta[i,j] * gamma_tsls[i][j] for i in range(K+1) for j in range(2)) == iv_estimand.beta_tsls), name = 'TSLS')
 	if monotonic:
 		for k in range(K):
 			model.addConstr((sum(theta[i, 0] * mono_constraint[k, i] for i in range(K+1)) <= 0))
@@ -210,7 +208,7 @@ def solver(K, D, Z, max, monotonic):
 
 def splines(max, monotonic):
 	K = 4
-	estimandK = estimand(D, Z)
+	iv_estimand = estimand(D, Z)
 	gamma_spline = gamma(D, Z, K)
 	gamma_star_spline = gamma_spline.gamma_star_spline()
 	gamma_iv_spline = gamma_spline.gamma_iv_spline()
@@ -225,11 +223,11 @@ def splines(max, monotonic):
 		mono_constraint[k, k] = 1
 		mono_constraint[k, k+1] = -1
 
-	model = gp.Model('GetBounds')
+	model = gp.Model('M')
 	# Create decision variables for the model
 	theta = model.addVars(K, 2, lb = 0, ub = 1)
-	model.addConstr((sum(theta[i,j] * gamma_iv_spline[j][i] for i in range(K) for j in range(2)) == estimandK.beta_iv), name = 'IV')
-	model.addConstr((sum(theta[i,j] * gamma_tsls_spline[j][i] for i in range(K) for j in range(2)) == estimandK.beta_tsls), name = 'TSLS')
+	model.addConstr((sum(theta[i,j] * gamma_iv_spline[j][i] for i in range(K) for j in range(2)) == iv_estimand.beta_iv), name = 'IV')
+	model.addConstr((sum(theta[i,j] * gamma_tsls_spline[j][i] for i in range(K) for j in range(2)) == iv_estimand.beta_tsls), name = 'TSLS')
 	if monotonic:
 		for k in range(K):
 			model.addConstr((sum(theta[i, 0] * mono_constraint[k, i] for i in range(K)) <= 0))
@@ -244,7 +242,7 @@ def splines(max, monotonic):
 	return(model.objVal)
 
 def plot_polys(maxK, D, Z):
-	att = estimandK = estimand(D, Z).beta_att
+	att = estimand(D, Z).beta_att
 	X = list(range(1, maxK+1))
 	maxYpoly = []
 	minYpoly = []
@@ -281,7 +279,7 @@ def plot_polys(maxK, D, Z):
 
 plot_polys(19, D, Z)
 
-
+solver(4, D, Z, True, False)
 
 
 
