@@ -1,5 +1,11 @@
 # Nadia Lucas
-
+# ECON 31720
+# Problem Set 3, Question 5
+# December 1, 2020
+# 
+# I would like to thank Yixin Sun and George Vojta for helpful comments
+# 
+# running on Python version 3.8.6
 ################################################################################
 
 
@@ -13,13 +19,10 @@ import statsmodels.api as sm
 datapath = "/Users/nadialucas/Dropbox/Second year/ECON 31720/ps3_files/"
 
 df = pd.read_csv(datapath+"angrist_evans_clean.csv")
+# add a constant
 df['C'] = 1
 
-Yvar = ['worked']
-Dvar = ['more2kids']
-Xvars = ['age', 'ageat1st', 'agekid1', 'agekid2', 'boy1st', 'boy2nd', 'black', 'hispanic', 'otherrace']
-
-
+# an object that sets up and runs OLS and TSLS
 class estimate:
 	def __init__(self, X,Y,Z):
 		self.N = len(Y)
@@ -47,18 +50,17 @@ class estimate:
 		beta = np.dot(np.dot(PZZPinv, pi.T), np.dot(self.Z.T, self.Y))
 		return beta
 
-# get the propensity scores
+# get the propensity scores (U)
 def logit(df, Zvar, Dvar, Xvars):
 	data = df
-	model = sm.GLM(data[Dvar], data[Zvar+Xvars], family = sm.families.Binomial())
+	model = sm.GLM(data[Dvar], data[Zvar+Xvars],family = sm.families.Binomial())
 	results = model.fit()
-	theta = results.params.to_numpy()
-	pred = np.dot(theta.T, df[Zvar+Xvars].T)
+	beta = results.params.to_numpy()
+	pred = np.dot(beta.T, df[Zvar+Xvars].T)
 	pscores = np.divide(np.exp(pred), (1+np.exp(pred)))
 	return pscores.reshape(len(pscores.flatten()),1)
 
-
-
+# object that aides in creating each MTR function
 class mtr_estimates:
 	def __init__(self, df, Dvar, Zvar, Xvars, Yvar, name):
 		self.D = df[Dvar].to_numpy()
@@ -81,6 +83,8 @@ class mtr_estimates:
 		self.U0 = self.U0.reshape(len(self.U0), 1)
 		self.name = name
 
+	# in general this does the work of splitting out the data into D=0, D=1
+	# and solving for parameters of interest
 	def mtr_helper(self, X1, X0):
 		coefs1 = estimate(X1, self.Y1, self.U1).regress()
 		coefs0 = estimate(X0, self.Y0, self.U0).regress()
@@ -89,7 +93,7 @@ class mtr_estimates:
 		Y0_imputed = np.dot(coefs0.T, X1.T).T
 		Y1_imputed = np.dot(coefs1.T, X0.T).T
 
-		# now construct an originally sized dataframe with potential outcomes (D==0 on top)
+		# now construct an originally sized dataframe with potential outcomes 
 		Y0 = np.concatenate([self.Y0, Y0_imputed])
 		Y1 = np.concatenate([Y1_imputed, self.Y1])
 		MTE = Y1 - Y0
@@ -98,7 +102,7 @@ class mtr_estimates:
 		D = np.concatenate([np.zeros(len(self.U0)), np.ones(len(self.U1))])
 
 
-		# this is def not the right way to solve for this
+		# using potential outcomes we back out our parameters of interest
 		ATE = np.mean(Y1) - np.mean(Y0)
 		ATT = np.mean(self.Y1) - np.mean(Y0_imputed)
 		ATU = np.mean(Y1_imputed) - np.mean(self.Y0)
@@ -108,6 +112,7 @@ class mtr_estimates:
 		print("ATU: ",round(ATU, 5))
 		print("LATE: ",round(LATE, 5))
 
+		# return coefficients for use in graphing MTEs
 		return(coefs0, coefs1)
 
 	def mtr1(self):
@@ -116,7 +121,7 @@ class mtr_estimates:
 		X0 = np.hstack((np.hstack((self.C0, self.U0)), self.X0))
 		Xbar = np.mean(self.X, axis = 0)
 		coefs0, coefs1 = self.mtr_helper(X1, X0)
-
+		# do the work to reconstruct data using X means to plot MTEs
 		Uplot = np.arange(0, 1, .001)
 		Xsplot = np.repeat([Xbar], len(Uplot), axis = 0)
 		Xsplot = np.insert(Xsplot, 0, Uplot, axis = 1)
@@ -132,10 +137,12 @@ class mtr_estimates:
 		fig.savefig(self.name+"_mte1.png")
 
 	def mtr2(self):
+		# this specification is a little tricky sinc it doesn't split up Xs
 		print("Spec 2")
 		DU = np.multiply(self.U, self.D)
-		X = np.hstack((np.hstack((np.hstack((np.hstack((self.C, self.D)), self.U)), DU)), self.X))
-		
+		X = np.hstack((np.hstack((np.hstack((np.hstack((self.C, self.D)), 
+			self.U)), DU)), self.X))
+		# run a regression using indicator dummies to back out the coefs
 		Xbar = np.mean(self.X, axis = 0)
 		coefs = estimate(X, self.Y, self.U).regress().flatten()
 		alpha_0 = coefs[0]
@@ -156,16 +163,13 @@ class mtr_estimates:
 		Y0_imputed = np.dot(coefs0.T, X1.T).T
 		Y1_imputed = np.dot(coefs1.T, X0.T).T
 
-		# now construct an originally sized dataframe with potential outcomes (D==0 on top)
+		# now construct an originally sized dataframe with potential outcomes 
 		Y0 = np.concatenate([self.Y0, Y0_imputed])
 		Y1 = np.concatenate([Y1_imputed, self.Y1])
 		MTE = Y1 - Y0
 		C = np.ones((len(MTE), 1))
 		U = np.concatenate([self.U0, self.U1])
 		D = np.concatenate([np.zeros(len(self.U0)), np.ones(len(self.U1))])
-
-
-		# this is def not the right way to solve for this
 		ATE = np.mean(Y1) - np.mean(Y0)
 		ATT = np.mean(self.Y1) - np.mean(Y0_imputed)
 		ATU = np.mean(Y1_imputed) - np.mean(self.Y0)
@@ -174,7 +178,7 @@ class mtr_estimates:
 		print("ATT: ",round(ATT, 5))
 		print("ATU: ",round(ATU, 5))
 		print("LATE: ",round(LATE, 5))
-
+		# now construct the right MTE plots
 		Uplot = np.arange(0, 1, .001)
 		Xsplot = np.repeat([Xbar], len(Uplot), axis = 0)
 		Xsplot = np.insert(Xsplot, 0, Uplot, axis = 1)
@@ -192,15 +196,17 @@ class mtr_estimates:
 
 	def mtr3(self):
 		print("Spec 3")
+		# add in an XU interaction
 		XU1 = np.multiply(self.U1, self.X1)
 		XU0 = np.multiply(self.U0, self.X0)
-		X1 = np.hstack((np.hstack((np.hstack((self.C1, self.U1)), self.X1)), XU1))
-		X0 = np.hstack((np.hstack((np.hstack((self.C0, self.U0)), self.X0)), XU0))
+		X1 = np.hstack((np.hstack((np.hstack((self.C1,self.U1)),self.X1)), XU1))
+		X0 = np.hstack((np.hstack((np.hstack((self.C0,self.U0)),self.X0)), XU0))
 		Xbar = np.mean(self.X, axis = 0)
 		coefs0, coefs1 = self.mtr_helper(X1, X0)
-
+		# construct the right MTE plots
 		Uplot = np.arange(0, 1, .001)
-		XUplot = np.dot(np.expand_dims(Xbar, axis=1), np.expand_dims(Uplot, axis=1).T).T
+		XUplot = np.dot(np.expand_dims(Xbar, axis=1),
+			np.expand_dims(Uplot, axis=1).T).T
 		Xsplot1 = np.repeat([Xbar], len(Uplot), axis = 0)
 		Xsplot = np.hstack((Xsplot1, XUplot))
 		Xsplot = np.insert(Xsplot, 0, Uplot, axis = 1)
@@ -217,10 +223,11 @@ class mtr_estimates:
 
 	def mtr4(self):
 		print("Spec 4")
+		# add in U^2 and similar follow the steps from mtr3
 		U12 = np.power(self.U1, 2)
 		U02 = np.power(self.U0, 2)
-		X1 = np.hstack((np.hstack((np.hstack((self.C1, self.U1)), U12)), self.X1))
-		X0 = np.hstack((np.hstack((np.hstack((self.C0, self.U0)), U02)), self.X0))
+		X1 = np.hstack((np.hstack((np.hstack((self.C1,self.U1)),U12)), self.X1))
+		X0 = np.hstack((np.hstack((np.hstack((self.C0,self.U0)),U02)), self.X0))
 		Xbar = np.mean(self.X, axis = 0)
 		coefs0, coefs1 = self.mtr_helper(X1, X0)
 
@@ -242,6 +249,7 @@ class mtr_estimates:
 
 	def mtr5(self):
 		print("Spec 5")
+		# add in a U^3 from the previous step
 		U12 = np.power(self.U1, 2)
 		U02 = np.power(self.U0, 2)
 		U13 = np.power(self.U1, 3)
@@ -269,13 +277,15 @@ class mtr_estimates:
 		ax.set(title = 'Specification 5 MTE')
 		fig.savefig(self.name+"_mte5.png")
 		
-		
+# construct relevant variables		
 Yvar = ['worked']
 Dvar = ['more2kids']
-Xvars = ['age', 'ageat1st', 'agekid1', 'agekid2', 'boy1st', 'boy2nd', 'black', 'hispanic', 'otherrace']
+Xvars = ['age', 'ageat1st', 'agekid1', 'agekid2', 'boy1st', 'boy2nd', 'black',
+'hispanic', 'otherrace']
 X = df[['C']+Dvar+Xvars].to_numpy()
 Y = df[Yvar].to_numpy()
 
+# and call each suite of functions from the mtr objects
 # instrument 1
 print("Same sex instrument:")
 Zvar = ['samesex']
@@ -287,8 +297,6 @@ inst1.mtr2()
 inst1.mtr3()
 inst1.mtr4()
 inst1.mtr5()
-
-
 
 # instrument 2
 print("Twins instrument:")
@@ -302,7 +310,6 @@ inst2.mtr3()
 inst2.mtr4()
 inst2.mtr5()
 
-
 # instrument 3
 print("Both instruments:")
 Zvar = ['samesex', 'twins']
@@ -314,13 +321,4 @@ inst3.mtr2()
 inst3.mtr3()
 inst3.mtr4()
 inst3.mtr5()
-
-
-
-
-
-# mtr_estimate()
-
-
-
 

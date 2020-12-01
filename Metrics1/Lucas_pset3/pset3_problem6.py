@@ -1,5 +1,11 @@
 # Nadia Lucas
-
+# ECON 31720
+# Problem Set 3, Question 6
+# December 1, 2020
+# 
+# I would like to thank Yixin Sun and George Vojta for helpful comments
+# 
+# running on Python version 3.8.6
 ################################################################################
 
 
@@ -38,7 +44,7 @@ class estimand:
 	def m1(self, u):
 		return 0.35 - 0.3*u - 0.05*u**2
 
-	# TSLS weights derived from teh jth component
+	# TSLS weights derived from the jth component
 	def w_tsls(self):
 		weights0 = []
 		weights1 = []
@@ -77,13 +83,14 @@ class estimand:
 		weights = (-1.0/ED)*np.array([1, .75, .5, .25, 0])
 		return weights
 
-	# somehow this is wrong for beta_att but it seems minor and everything else worked (ignoring for now)
 	def beta_s(self, weights, att = False):
 		beta_s = 0
 		# construct a list that includes all the bounds for integration
 		bounds = self.D.flatten()
 		bounds = np.insert(bounds, 0, 0)
 		bounds = np.insert(bounds, len(self.D)+1, 1)
+		# using weights and appropriate MTE functions, solve for beta
+		# as outlined in the paper
 		for i in list(range(len(bounds)-1)):
 			w0 = weights[i]
 			w1 = -1.0*weights[i]
@@ -104,20 +111,25 @@ class gamma:
 		bounds = np.insert(bounds, 0, 0)
 		self.bounds = np.insert(bounds, len(self.D)+1, 1)
 		# now create intervals from the bounds
-		self.intervals = [self.bounds[i+1] - self.bounds[i] for i in range(len(self.bounds)-1)]
+		self.intervals = [self.bounds[i+1] - self.bounds[i] 
+			for i in range(len(self.bounds)-1)]
+		# store an estimand object to reference weights
 		self.estimate = estimand(D, Z)
 
-	# regular Bernstein function
+	# Bernstein polynomial
 	def bernstein(self, u, k):
 		return math.comb(self.K, k)*(u**k)*((1-u)**(self.K-k))
 
 	def gamma_star_k(self, k):
 		gamma_s0 = 0
 		gamma_s1 = 0
+		# similar to constructing beta_s, cycle through weights and
+		# integrate the bernstein polynomial at each relevant interval
 		for i in list(range(1, len(self.bounds))):
 			w0 = self.estimate.w_att[i-1]
 			w1 = -1.0*self.estimate.w_att[i-1]
-			integral = integrate.quad(self.bernstein, self.bounds[i-1], self.bounds[i], args = k)[0]
+			integral = integrate.quad(self.bernstein, self.bounds[i-1], 
+				self.bounds[i], args = k)[0]
 			gamma_s0 += w0*integral
 			gamma_s1 += w1*integral
 		return [gamma_s0, gamma_s1]
@@ -125,10 +137,12 @@ class gamma:
 	def gamma_iv_k(self, k):
 		gamma_s0 = 0
 		gamma_s1 = 0
+		# using IV weights this time, similarly construct the gamma_s for IV
 		for i in list(range(1, len(self.bounds))):
 			w0 = self.estimate.w_iv[i-1]
 			w1 = -1.0*self.estimate.w_iv[i-1]
-			integral = integrate.quad(self.bernstein, self.bounds[i-1], self.bounds[i], args = k)[0]
+			integral = integrate.quad(self.bernstein, self.bounds[i-1], 
+				self.bounds[i], args = k)[0]
 			gamma_s0 += w0*integral
 			gamma_s1 += w1*integral
 		return [gamma_s0, gamma_s1]
@@ -136,15 +150,19 @@ class gamma:
 	def gamma_tsls_k(self, k):
 		gamma_s0 = 0
 		gamma_s1 = 0
+		# using TSLS weights this time, similarly construct the gamma_s for TSLS
 		for i in list(range(1, len(self.bounds))):
 			w0 = self.estimate.w_tsls[i-1]
 			w1 = -1.0*self.estimate.w_tsls[i-1]
-			integral = integrate.quad(self.bernstein, self.bounds[i-1], self.bounds[i], args=k)[0]
+			integral = integrate.quad(self.bernstein, self.bounds[i-1], 
+				self.bounds[i], args=k)[0]
 			gamma_s0 += w0*integral
 			gamma_s1 += w1*integral
 		return [gamma_s0, gamma_s1]
 
 	def gamma_star_spline(self):
+		# for the constant spline, we integrate over an indicator function
+		# so relevan weights are just multiplied by the length of the interval
 		gamma_s0 = np.multiply(self.intervals, self.estimate.w_att)
 		gamma_s1 = np.multiply(self.intervals, -1.0*self.estimate.w_att)
 		return [gamma_s0, gamma_s1]
@@ -159,12 +177,8 @@ class gamma:
 		gamma_s1 = np.multiply(self.intervals, -1.0*self.estimate.w_tsls)
 		return [gamma_s0, gamma_s1]
 
-
-
-
-# Time to implement the solver
-
 def solver(K, D, Z, max, monotonic):
+	# call all relevant weights and constraints
 	iv_estimand = estimand(D, Z)
 	gammaK = gamma(D, Z, K)
 	gamma_star = []
@@ -188,26 +202,33 @@ def solver(K, D, Z, max, monotonic):
 	model = gp.Model('M')
 	# Create decision variables for the model
 	theta = model.addVars(K+1, 2, lb = 0, ub = 1)
-	model.addConstr((sum(theta[i,j] * gamma_iv[i][j] for i in range(K+1) for j in range(2)) == iv_estimand.beta_iv), name = 'IV')
-	model.addConstr((sum(theta[i,j] * gamma_tsls[i][j] for i in range(K+1) for j in range(2)) == iv_estimand.beta_tsls), name = 'TSLS')
+	# once we have our beta_s and gamma_s, we can
+	# use the Gurobi API to construct the two constraints
+	model.addConstr((sum(theta[i,j] * gamma_iv[i][j] for i in range(K+1) 
+		for j in range(2)) == iv_estimand.beta_iv), name = 'IV')
+	model.addConstr((sum(theta[i,j] * gamma_tsls[i][j] for i in range(K+1) 
+		for j in range(2)) == iv_estimand.beta_tsls), name = 'TSLS')
+	# we can additionally impose the monotonically decreasing constraints
 	if monotonic:
 		for k in range(K):
-			model.addConstr((sum(theta[i, 0] * mono_constraint[k, i] for i in range(K+1)) <= 0))
-			model.addConstr((sum(theta[i, 1] * mono_constraint[k, i] for i in range(K+1)) <= 0))
+			model.addConstr((sum(theta[i, 0] * mono_constraint[k, i] 
+				for i in range(K+1)) <= 0))
+			model.addConstr((sum(theta[i, 1] * mono_constraint[k, i] 
+				for i in range(K+1)) <= 0))
+	# using our beta*, gamma*, we can set the relevant objective function
 	if max:
-		model.setObjective((sum(theta[i,j] * gamma_star[i][j] for i in range(K+1) for j in range(2))), GRB.MAXIMIZE)
+		model.setObjective((sum(theta[i,j] * gamma_star[i][j] 
+			for i in range(K+1) for j in range(2))), GRB.MAXIMIZE)
 	else:
-		model.setObjective((sum(theta[i,j] * gamma_star[i][j] for i in range(K+1) for j in range(2))), GRB.MINIMIZE)
+		model.setObjective((sum(theta[i,j] * gamma_star[i][j] 
+			for i in range(K+1) for j in range(2))), GRB.MINIMIZE)
 	
-
+	# and solve
 	model.optimize()
 	return model.objVal
-	
-# att = estimand(D,Z).beta_att
-# print(att)
 
 def splines(max, monotonic):
-	K = 4
+	K = 4 # for monotonicity to reuse the same method as above
 	iv_estimand = estimand(D, Z)
 	gamma_spline = gamma(D, Z, K)
 	gamma_star_spline = gamma_spline.gamma_star_spline()
@@ -226,33 +247,45 @@ def splines(max, monotonic):
 	model = gp.Model('M')
 	# Create decision variables for the model
 	theta = model.addVars(K, 2, lb = 0, ub = 1)
-	model.addConstr((sum(theta[i,j] * gamma_iv_spline[j][i] for i in range(K) for j in range(2)) == iv_estimand.beta_iv), name = 'IV')
-	model.addConstr((sum(theta[i,j] * gamma_tsls_spline[j][i] for i in range(K) for j in range(2)) == iv_estimand.beta_tsls), name = 'TSLS')
+	# once we have our beta_s (spline) and gamma_s (spline, we can
+	# use the Gurobi API to construct the two constraints
+	model.addConstr((sum(theta[i,j] * gamma_iv_spline[j][i] for i in range(K) 
+		for j in range(2)) == iv_estimand.beta_iv), name = 'IV')
+	model.addConstr((sum(theta[i,j] * gamma_tsls_spline[j][i] for i in range(K) 
+		for j in range(2)) == iv_estimand.beta_tsls), name = 'TSLS')
+	# we can additionally impose the monotonically decreasing constraints
 	if monotonic:
 		for k in range(K):
-			model.addConstr((sum(theta[i, 0] * mono_constraint[k, i] for i in range(K)) <= 0))
-			model.addConstr((sum(theta[i, 1] * mono_constraint[k, i] for i in range(K)) <= 0))
+			model.addConstr((sum(theta[i, 0] * mono_constraint[k, i] 
+				for i in range(K)) <= 0))
+			model.addConstr((sum(theta[i, 1] * mono_constraint[k, i] 
+				for i in range(K)) <= 0))
+	# using our beta*, gamma*, we can set the relevant objective function
 	if max:
-		model.setObjective((sum(theta[i,j] * gamma_star_spline[j][i] for i in range(K) for j in range(2))), GRB.MAXIMIZE)
+		model.setObjective((sum(theta[i,j] * gamma_star_spline[j][i] 
+			for i in range(K) for j in range(2))), GRB.MAXIMIZE)
 	else:
-		model.setObjective((sum(theta[i,j] * gamma_star_spline[j][i] for i in range(K) for j in range(2))), GRB.MINIMIZE)
-
-
+		model.setObjective((sum(theta[i,j] * gamma_star_spline[j][i] 
+			for i in range(K) for j in range(2))), GRB.MINIMIZE)
+	# and solve
 	model.optimize()
 	return(model.objVal)
 
 def plot_polys(maxK, D, Z):
+	# get the ATT 
 	att = estimand(D, Z).beta_att
 	X = list(range(1, maxK+1))
 	maxYpoly = []
 	minYpoly = []
 	maxYmono = []
 	minYmono = []
+	# call the solver for all Ks
 	for K in list(range(1, maxK+1)):
 		maxYpoly.append(solver(K, D, Z, True, False))
 		minYpoly.append(solver(K, D, Z, False, False))
 		maxYmono.append(solver(K, D, Z, True, True))
 		minYmono.append(solver(K, D, Z, False, True))
+	# construct the line of ATTs and the line of NP bounds
 	attY = att*np.ones(maxK)
 	maxNPY = splines(True, False)*np.ones(maxK)
 	minNPY = splines(False, False)*np.ones(maxK)
@@ -260,16 +293,25 @@ def plot_polys(maxK, D, Z):
 	minNPYmono = splines(False, True)*np.ones(maxK)
 
 	fig, ax = plt.subplots()
-	# style of data points
-	ax.plot(X, maxYpoly, '-o', markersize = 2.5, linewidth = .4, color='dodgerblue', label = 'Polynomial')
-	ax.plot(X, minYpoly, '-o', markersize = 2.5, linewidth = .4, color='dodgerblue')
-	ax.plot(X, maxYmono, '-s', markersize = 2.5, linewidth = .4, color='coral', label = 'Polynomial and decreasing')
-	ax.plot(X, minYmono, '-s', markersize = 2.5, linewidth = .4, color='coral')
-	ax.plot(X, attY, ':*', markersize = 2.5, linewidth = .4, color = 'black', label = 'ATT')
-	ax.plot(X, maxNPY, '--o', markersize = 2.5, linewidth = .4, color = 'dodgerblue', label = 'Nonparametric')
-	ax.plot(X, minNPY, '--o', markersize = 2.5, linewidth = .4, color = 'dodgerblue')
-	ax.plot(X, maxNPYmono, '--s', markersize = 2.5, linewidth = .4, color = 'coral', label = 'Nonparametric and decreasing')
-	ax.plot(X, minNPYmono, '--s', markersize = 2.5, linewidth = .4, color = 'coral')
+	# create the style for each line and label legend
+	ax.plot(X, maxYpoly, '-o', markersize = 2.5, linewidth = .4, 
+		color='dodgerblue', label = 'Polynomial')
+	ax.plot(X, minYpoly, '-o', markersize = 2.5, linewidth = .4, 
+		color='dodgerblue')
+	ax.plot(X, maxYmono, '-s', markersize = 2.5, linewidth = .4, 
+		color='coral', label = 'Polynomial and decreasing')
+	ax.plot(X, minYmono, '-s', markersize = 2.5, linewidth = .4, 
+		color='coral')
+	ax.plot(X, attY, ':*', markersize = 2.5, linewidth = .4, 
+		color = 'black', label = 'ATT')
+	ax.plot(X, maxNPY, '--o', markersize = 2.5, linewidth = .4, 
+		color = 'dodgerblue', label = 'Nonparametric')
+	ax.plot(X, minNPY, '--o', markersize = 2.5, linewidth = .4, 
+		color = 'dodgerblue')
+	ax.plot(X, maxNPYmono, '--s', markersize = 2.5, linewidth = .4, 
+		color = 'coral', label = 'Nonparametric and decreasing')
+	ax.plot(X, minNPYmono, '--s', markersize = 2.5, linewidth = .4, 
+		color = 'coral')
 	ax.legend(loc='lower left', fontsize = 8)
 	plt.ylim([-1, .3])
 	plt.xticks(np.arange(min(X), max(X)+1, 1.0))
@@ -277,9 +319,9 @@ def plot_polys(maxK, D, Z):
 	ax.set(xlabel='Polynomial degree (K)', ylabel='Upper and Lower Bounds')
 	fig.savefig("fig6.png")
 
+# call the plotting function for all 19 Ks
 plot_polys(19, D, Z)
 
-solver(4, D, Z, True, False)
 
 
 
