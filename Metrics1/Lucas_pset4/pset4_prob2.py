@@ -39,6 +39,7 @@ def monte_carlo(N, M, theta, rho = 0.5):
 	rel_betas = []
 	T=5
 	rho = .5
+	rlist = [-3, -2, 0, 1, 2, 3]
 	for m in range(M):
 		# Construct the DGP
 		E = randint.rvs(2, 6, size = N).reshape(N, 1)
@@ -70,15 +71,13 @@ def monte_carlo(N, M, theta, rho = 0.5):
 		# now we essentially 'reshape long' and stack everything
 		Ylong = Y.reshape(len(Y.flatten()), 1)
 
-
-
 		# now construct all the dummies
 		Elong = Epanel.reshape(len(Epanel.flatten()), 1)
 		Tlong = Tpanel.reshape(len(Tpanel.flatten()), 1)
 
 		cohortDums = np.array([ [1 if Elong[i] == t+2 else 0 for t in range(T-1)] for i in range(len(Elong)) ]) 
 		timeDums = np.array([ [1 if Tlong[i] == t else 0 for t in range(T)] for i in range(len(Tlong)) ]) 
-		rlist = [-3, -2, 0, 1, 2, 3]
+		
 		relDums = np.array( [ [1 if Tlong[i]+1 - Elong[i] == r else 0 for r in rlist] for i in range(len(Tlong)) ])
 
 		# cohort fixed effects, time fixed effects, and relative time dummies are regressors
@@ -88,12 +87,38 @@ def monte_carlo(N, M, theta, rho = 0.5):
 		rel_betas.append(ols_beta[9:])
 
 	betas = np.array(rel_betas)
-	mean = np.mean(betas, axis = 0)
-	low_quantile = np.quantile(betas, .025, axis = 0)
-	hi_quantile = np.quantile(betas, .975, axis=0)
+	mean = np.squeeze(np.mean(betas, axis = 0))
+	low_quantile = np.squeeze(np.quantile(betas, .025, axis = 0))
+	hi_quantile = np.squeeze(np.quantile(betas, .975, axis=0))
 	return low_quantile, mean, hi_quantile
 
-lo1, mean1, hi1 = monte_carlo(1000, 10, -2)
 
-lo2, mean2, hi2 = monte_carlo(1000, 100, -2)
 
+thetalist = [-2, 0, 1]
+
+for theta in thetalist:
+	# do we have to impute the 
+	lo1, mean1, hi1 = monte_carlo(1000, 60, theta)
+
+	lo2, mean2, hi2 = monte_carlo(10000, 60, theta)
+
+	rlist = [-3, -2, 0, 1, 2, 3]
+
+	# time to plot
+	fig, ax = plt.subplots()
+
+	ax.plot(rlist, mean1, '-o', markersize = 2.5, linewidth = 1, 
+			color = 'coral', label = 'N=1000 with 2.5'+'%'+' and 97.5'+'%'+' quantiles reported')
+	ax.plot(rlist, lo1, alpha = 0)
+	ax.plot(rlist, hi1, alpha = 0)
+	ax.fill_between(rlist, lo1, hi1, color = 'coral', alpha = 0.3)
+
+	ax.plot(rlist, mean2, '-o', markersize = 2.5, linewidth = 1, 
+			color = 'dodgerblue', label = 'N=10000 with 2.5'+'%'+' and 97.5'+'%'+' quantiles reported')
+	ax.plot(rlist, lo2, alpha = 0)
+	ax.plot(rlist, hi2, alpha = 0)
+	ax.fill_between(rlist, lo2, hi2, color = 'dodgerblue', alpha = 0.3)
+	ax.legend(loc='upper left', fontsize = 8)
+	ax.set(xlabel='Relative time', ylabel='Coefficient', title = 'Theta: '+str(theta))
+
+	fig.savefig("partb_theta"+str(theta)+".png")
