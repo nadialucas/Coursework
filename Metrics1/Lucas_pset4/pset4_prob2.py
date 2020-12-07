@@ -38,7 +38,6 @@ class estimate:
 def monte_carlo(N, M, theta, rho = 0.5):
 	rel_betas = []
 	T=5
-	rho = .5
 	rlist = [-3, -2, 0, 1, 2, 3]
 	for m in range(M):
 		# Construct the DGP
@@ -51,14 +50,15 @@ def monte_carlo(N, M, theta, rho = 0.5):
 		for i in range(T-1):
 			Unext = rho*U[:,i] + epsilon[:,i+1]
 			U = np.insert(U, i+1, Unext, axis = 1)
+
 			
 		Tpanel = np.array([ [ t for t in range(T) ] for j in range(N)])
 
 		V = np.array([ [np.random.normal() for i in range(T)]    for j in range(N) ])
 
-
 		Y0 = -.2 + .5*E + U
-		Y1 = -.2 + .5*E + np.sin(Tpanel - theta*E) + U + V
+		Y1 = -.2 + .5*E + np.sin(Tpanel + 1 - theta*E) + U + V
+
 
 
 		# construct Y first by constructing treatment
@@ -97,10 +97,9 @@ def monte_carlo(N, M, theta, rho = 0.5):
 thetalist = [-2, 0, 1]
 
 for theta in thetalist:
-	# do we have to impute the 
-	lo1, mean1, hi1 = monte_carlo(1000, 60, theta)
+	lo1, mean1, hi1 = monte_carlo(1000, 50, theta)
 
-	lo2, mean2, hi2 = monte_carlo(10000, 60, theta)
+	lo2, mean2, hi2 = monte_carlo(10000, 50, theta)
 
 	rlist = [-3, -2, 0, 1, 2, 3]
 
