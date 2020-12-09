@@ -25,15 +25,32 @@ df = pd.read_csv(psdir + "basque.csv")
 
 # nearest neighbor weight vector
 
-def nn_match(donors, treated, treatment, m):
+def nn_match(donors, treated, treatment, m=5):
+	# using dictionaries, not the most efficient method
+	# but I'm sticking with this orientation of my dataframes
 	donors = donors[donors.index <= treatment]
 	treated = treated[treated.index <= treatment]
+	# print(donors.sub(pd.Series(treated), axis = 0))
+	dist = {}
+	for (columnName, columnData) in donors.iteritems():
+		if columnName != 18:
+			dist[np.sum(np.power((donors[columnName] - treated[17]), 2))] = columnName
+		else:
+			dist[np.sum(np.power((donors[columnName] - treated[17]), 2))] = columnName-1
+
+	sorted_dist = sorted(dist.items())
+	neighbors = []
+	for i in range(m):
+		neighbors.append(sorted_dist[i][1])
+	weights = np.zeros(donors.shape[1])
+	weights[neighbors] = 1.0/m
+	return weights
+	
 
 def synthetic_control(donors, treated, treatment):
-	donors = donors[donors.index <= 1969]
-	treated = treated[treated.index<=1969]
+	donors = donors[donors.index <= treatment]
+	treated = treated[treated.index <= treatment]
 	synthetic = -2*np.dot(treated.T, donors)
-	print(synthetic)
 	objcon = np.dot(treated.T, treated)
 	Q = np.dot(donors.T, donors)
 	model = gp.Model()
@@ -44,17 +61,14 @@ def synthetic_control(donors, treated, treatment):
 	# weights = model.addVars(numdonors, 1, lb = 0, ub = 1)
 	model.addConstr((sum(weights[i] for i in range(numdonors)) == 1), name = 'weights')
 	# extrapolation bias
-
-	# model.addMQCons(Q, None, '=')
-	# model.addObjCon(objcon)
-	print((synthetic).shape)
-	print(weights)
 	model.setObjective((objcon + synthetic @ weights + weights @ Q @ weights ), GRB.MINIMIZE)
 
 	model.optimize()
-	print(model.objVal)
+	weights = []
 	for v in model.getVars():
-		print('%s %g' % (v.varName, v.x))
+		weights.append(v.x)
+	print(weights)
+	return(weights)
 
 
 
@@ -66,12 +80,15 @@ treatment = 1969
 df_donors = df[df.regionno != 17]
 df_donors = df_donors[['regionno', 'year', 'gdpcap']]
 df_donors = df_donors.pivot(index = 'year', columns = 'regionno', values = 'gdpcap')
-print(df_donors.head())
 df_treated = df[df.regionno == 17]
 df_treated = df_treated[['regionno', 'year', 'gdpcap']]
 df_treated = df_treated.pivot(index = 'year', columns = 'regionno', values = 'gdpcap')
-print(df_treated.head())
 
-treated = df_treated[df_treated.index<=1969]
+weights_sc = synthetic_control(df_donors, df_treated, 1969)
+weights_match = nn_match(df_donors, df_treated, 1969)
 
-synthetic_control(df_donors, df_treated, 1969)
+
+# not it's time to get phi
+
+
+
