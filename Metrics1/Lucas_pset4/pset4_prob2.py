@@ -92,6 +92,31 @@ class estimate:
 			self.XpXi)
 		return np.sqrt(np.diag(V))
 
+	def wild_bootstrap(self, beta_null, var):
+		X1 = self.df[var].to_numpy()
+		# get a list of all variables that are not rel time 1 dummy
+		Xvars_no1 = [v for v in self.xvars if v!=var[0]]
+		# perform a regression without rel time 1 dummy
+		Y1 = self.Y - beta_null*X1
+		Xno1 = self.df[Xvars_no1].to_numpy()
+		beta1 = np.linalg.solve(Xno1.T.dot(Xno1), Xno1.T.dot(Y1))
+		# use the beta to construct the Us
+		U = Y1 - np.dot(Xno1, beta1)
+		rand_sign = 2*randint.rvs(0, 1, size = self.N).reshape(self.N, 1) - 1
+		newU = np.multiply(U, rand_sign)
+		Ywild = np.dot(Xno1, beta1) + newU
+
+		beta_wild = np.dot(self.XpXi, np.dot(self.X.T, Ywild))
+
+		error = Ywild - np.dot(self.X, beta_wild)
+
+		s2 = np.dot(error.T, error)/(self.N - self.k)
+		sd = np.sqrt(np.multiply(s2, np.diag(self.XpXi)))
+
+		return sd.flatten()
+
+
+
 
 def monte_carlo(N, M, theta, rho = 0.5):
 	rel_betas = []
@@ -204,7 +229,7 @@ def monte_carlo(N, M, theta, rho = 0.5):
 
 
 
-def get_errors(N, M, rho, theta=1, true_beta = math.sin(1)):
+def get_errors(N, M, rho, theta=1, true_beta = (math.sin(1)-math.sin(-1)-math.sin(-4))):
 	rel_betas = []
 	T=5
 	rlist = [-3, -2, 0, 1, 2, 3]
@@ -212,6 +237,7 @@ def get_errors(N, M, rho, theta=1, true_beta = math.sin(1)):
 	robustlist = []
 	clustlist = []
 	bootstraplist = []
+	wildlist = []
 	for m in range(M):
 		# Deterministically set E
 		E = np.array([ i%4 + 2 for i in range(N)]).reshape(N,1)
@@ -280,11 +306,13 @@ def get_errors(N, M, rho, theta=1, true_beta = math.sin(1)):
 		std_errors = est.std().flatten()
 		robust_errors = est.robust()
 		clust_robust_errors = est.cluster_robust(['index'])
+		wild_errors = est.wild_bootstrap(true_beta, ['rt1'])
 		# coefficient on rt1 is the 12th 
 		beta = betas[11]
 		std = std_errors[11]
 		rob = robust_errors[11]
 		clus = clust_robust_errors[11]
+		wild = wild_errors[11]
 
 		# print(beta, std)
 
@@ -302,9 +330,13 @@ def get_errors(N, M, rho, theta=1, true_beta = math.sin(1)):
 			clustlist.append(1)
 		else:
 			clustlist.append(0)
-		print(beta, std, rob, clus)
 
-	return np.mean(np.array(stdlist)), np.mean(np.array(robustlist)), np.mean(np.array(clustlist))
+		if np.abs((beta-true_beta)/wild) > 1.96:
+			wildlist.append(1)
+		else:
+			wildlist.append(0)
+
+	return np.mean(np.array(stdlist)), np.mean(np.array(robustlist)), np.mean(np.array(clustlist)), np.mean(np.array(wildlist))
 
 
 	# betas = np.array(rel_betas)
@@ -317,7 +349,8 @@ rholist = [0, .5, 1]
 rholist = [.5]
 
 for rho in rholist:
-	print(get_errors(20, 30, rho))
+	print("rho is "+str(rho))
+	print(get_errors(100, 30, rho))
 
 	# lo2, mean2, hi2 = monte_carlo(10000, 50, theta)
 
