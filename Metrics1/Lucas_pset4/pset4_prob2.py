@@ -286,6 +286,8 @@ def get_errors(N, M, rho, theta=1, true_beta = math.sin(1)):
 		rob = robust_errors[11]
 		clus = clust_robust_errors[11]
 
+		# print(beta, std)
+
 		if np.abs((beta-true_beta)/std) > 1.96:
 			stdlist.append(1)
 		else:
@@ -300,6 +302,7 @@ def get_errors(N, M, rho, theta=1, true_beta = math.sin(1)):
 			clustlist.append(1)
 		else:
 			clustlist.append(0)
+		print(beta, std, rob, clus)
 
 	return np.mean(np.array(stdlist)), np.mean(np.array(robustlist)), np.mean(np.array(clustlist))
 
@@ -311,9 +314,10 @@ def get_errors(N, M, rho, theta=1, true_beta = math.sin(1)):
 	# return low_quantile, mean, hi_quantile
 
 rholist = [0, .5, 1]
+rholist = [.5]
 
 for rho in rholist:
-	print(get_errors(20, 100, rho))
+	print(get_errors(20, 30, rho))
 
 	# lo2, mean2, hi2 = monte_carlo(10000, 50, theta)
 
