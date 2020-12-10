@@ -140,12 +140,9 @@ def cv_masc(treated, donors, treatment, m, min_preperiods, phis=[]):
 	phi = min(1,phi)
 
 	error = np.sum(np.power((Y_treated - phi*gamma_match - (1-phi)*gamma_sc), 2))
-	# error = np.power(Y_treated - phi * Y_match - (1-phi)*Y_sc, 2)
-	# print(error)
-	# store error, phi
 	return error, phi
 
-def masc(treated, donors, treatment, m_tune_params, min_preperiods, phis=[]):
+def masc(treated, donors, treatment, m_tune_params, min_preperiods):
 	error_list = []
 	phi_list = []
 	for m in m_tune_params:
@@ -156,38 +153,153 @@ def masc(treated, donors, treatment, m_tune_params, min_preperiods, phis=[]):
 	min_index = error_list.index(min(error_list))
 	
 	# return m and phi
-
 	return m_tune_params[min_index], phi_list[min_index]
 
 
 
+def weights_from_pi(treated, donors, treatment, pi):
+	donors = donors[donors.index < treatment].to_numpy()
+	treated = treated[treated.index < treatment].to_numpy()
+	synthetic = -2*np.dot(treated.T, donors)
+	objcon = np.dot(treated.T, treated)
+	Q = np.dot(donors.T, donors)
+
+	objconpi = objcon * (1-pi)
+	Qtpi = Q * (1-pi)
+	syntheticpi = synthetic*(1-pi)
+
+	distance = np.power(donors - treated, 2)
+	numdonors = donors.shape[1]
+	numtimes = donors.shape[0]
+	ones = np.ones((1, numtimes))
+	distance_norm = np.dot(ones, distance)
+	distance_normpi = pi * distance_norm
+	model = gp.Model()
+	
+
+
+	
+	weights = model.addMVar(numdonors, lb = 0, ub = 1)
+
+	model.addConstr((sum(weights[i] for i in range(numdonors)) == 1), name = 'weights')
+	# extrapolation biasm
+	# model.setObjective((  (1-pi) * (objcon + sum(synthetic[i] * weights[i] 
+	# 	for i in range(numdonors)) + sum( weights[i]*sum(weights[j]*Q[i][j] 
+	# 		for j in range(numdonors))  
+	# 	for i in range(numdonors)) )) , GRB.MINIMIZE)
+	# model.setObjective(( (1-pi) * sum(treated[i] - sum(weights[i] * donors[i][j] for j in numdonors) for i in ))
+	model.setObjective( (objconpi + syntheticpi @ weights + weights @ Qtpi @ weights + distance_normpi @ weights), GRB.MINIMIZE)
+
+	model.optimize()
+
+	weights = []
+	for v in model.getVars():
+		weights.append(v.x)
+	return np.array(weights)
+	# model.setObjective(((1-pi) * (objcon + synthetic @ weights + weights @ Q @ weights) + pi * (ones @ (distance @ weights))), GRB.MINIMIZE)
+	# interpolation bias
+
+def loss_from_pi(treated, donors, treatment, min_preperiods, pi):
+	weights_f = np.ones(treatment-2-min_preperiods)
+	set_f = list(range(min_preperiods, treatment-1))
+
+	minlength = 1
+	maxlength = 1
+
+	# solve matching and sc estimators for each fold
+	gamma_sc_pi = []
+	Y_treated = []
+	for fold in set_f:
+		interval = list(range(fold + minlength, min(fold+maxlength, treatment-1) + 1))
+		temp_treatment = fold+1
+
+		pi_weights = weights_from_pi(treated, donors, temp_treatment, pi)
+		pi_weights = np.expand_dims(pi_weights, axis = 1)
+
+		# double check that this is the correct forecasting
+		control_donors = df_donors[df_donors.index.isin(interval)].to_numpy()
+		gamma_sc_pi.append(np.dot(control_donors, pi_weights)[0][0])
+		Y_treated.append(df_treated[df_treated.index.isin(interval)].to_numpy()[0][0])
+		
+	gamma_sc_pi = np.array(gamma_sc_pi)
+	Y_treated = np.array(Y_treated)
+
+	error = np.sum(np.power(Y_treated - gamma_sc_pi, 2))
+	return error
+
+def penalized_sc(treated, donors, treatment, min_preperiods):
+	pis = np.arange(0, .2, .01).tolist()
+	print(pis)
+	errors = []
+	for pi in pis:
+		errs = loss_from_pi(treated, donors, treatment, min_preperiods, pi)
+		errors.append(errs)
+
+	min_index = errors.index(min(errors))
+	pi_opt = pis[min_index]
+
+	weights = weights_from_pi(treated, donors, treatment, pi_opt)
+	return weights
+
+
 
 opt_m, opt_phi = masc(df_treated, df_donors, treatment, m_tune_params, min_preperiods)
+print(opt_m, opt_phi)
 
 # finally construct the masc for basque data
 ma_weights = nn_match(df_donors, df_treated, treatment, opt_m)
+ma_weights = np.expand_dims(ma_weights, axis = 1)
 sc_weights = synthetic_control(df_donors, df_treated, treatment)
+sc_weights = np.expand_dims(sc_weights, axis = 1)
+pensc_weights = penalized_sc(df_treated, df_donors, treatment, min_preperiods)
+pensc_weights = np.expand_dims(pensc_weights, axis = 1)
 
 masc_weights = np.array(opt_phi * ma_weights + (1-opt_phi) * sc_weights)
-masc_weights = np.expand_dims(masc_weights, axis = 1)
+
+Y_control_ma = np.dot(ma_weights.T, df_donors.to_numpy().T)
+Y_control_sc = np.dot(sc_weights.T, df_donors.to_numpy().T)
+Y_control_psc = np.dot(sc_weights.T, df_donors.to_numpy().T)
 
 
 Y_control = np.dot(masc_weights.T, df_donors.to_numpy().T)
 
 Y_treated = df_treated.to_numpy().T
 
-Ys = (Y_treated - Y_control).T
+Ys = 1000*(Y_treated - Y_control).T
+
+Ytreated = Ys[15:]
 
 X = list(range(len(Ys)))
-
-print(X)
+X = [x+1954 for x in X]
 
 
 fig, ax = plt.subplots()
 
-ax.plot(X, Ys)
+ax.plot(X, Ys, color = 'black')
+ax.axhline(y=0, xmin=0.0, xmax=1.0, linestyle = '-', color='black', linewidth = .6)
+ax.axhline(y=np.mean(Ytreated), xmin = 0.0, xmax = 1.0, linestyle = '-', color = 'dodgerblue', label = 'Mean effect', linewidth = .6)
+ax.axvline(x=1969.5, ymin = 0.0, ymax = 1.0, linestyle = '-', color = 'coral', linewidth = .6, label = 'Treatment period')
+ax.legend(loc = 'lower left', fontsize = 8)
+ax.set(xlabel = 'Year', ylabel = 'Difference in Effect (per capita GDP)')
+fig.savefig("fig10.png")
 
 plt.show()
+
+fig, ax = plt.subplots()
+Y1 = 1000*(Y_control - Y_control_ma).T
+Y2 = 1000*(Y_control - Y_control_sc).T
+Y3 = 1000*(Y_control - Y_control_psc).T
+ax.plot(X, Y1, color = 'coral', label = 'Matching')
+ax.plot(X, Y2, color = 'dodgerblue', label = 'Synthetic Control and Penalized synthetic control')
+ax.axhline(y=0, xmin = 0.0, xmax = 1.0, linestyle = '-', linewidth = .6, color = 'black')
+ax.plot(X, Y3, color = 'dodgerblue')
+ax.legend(loc = 'lower left', fontsize = 8)
+ax.set(xlabel = 'Year', ylabel = 'Difference in Effect (per capita GDP)')
+fig.savefig("fig11.png")
+
+plt.show()
+
+
 
 
 
