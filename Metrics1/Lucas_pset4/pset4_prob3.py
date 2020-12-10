@@ -88,7 +88,10 @@ weights_sc = synthetic_control(df_donors, df_treated, 1969)
 weights_match = nn_match(df_donors, df_treated, 1969)
 
 
-# not it's time to get phi
+# now it's time to get phi
 
+
+
+min_preperiods = ceiling((treatment-1955)/2)
 
 

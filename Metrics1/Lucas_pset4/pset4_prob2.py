@@ -204,7 +204,7 @@ def monte_carlo(N, M, theta, rho = 0.5):
 
 
 
-def get_errors(N, M, theta, rho = 0.5):
+def get_errors(N, M, rho, theta=1, true_beta = math.sin(1)):
 	rel_betas = []
 	T=5
 	rlist = [-3, -2, 0, 1, 2, 3]
@@ -278,7 +278,6 @@ def get_errors(N, M, theta, rho = 0.5):
 		est = estimate(Xvars, Yvar, df)
 		betas = est.regress()
 		std_errors = est.std().flatten()
-		print(std_errors)
 		robust_errors = est.robust()
 		clust_robust_errors = est.cluster_robust(['index'])
 		# coefficient on rt1 is the 12th 
@@ -287,17 +286,17 @@ def get_errors(N, M, theta, rho = 0.5):
 		rob = robust_errors[11]
 		clus = clust_robust_errors[11]
 
-		if np.abs(beta/std) > 1.96:
+		if np.abs((beta-true_beta)/std) > 1.96:
 			stdlist.append(1)
 		else:
 			stdlist.append(0)
 
-		if np.abs(beta/rob) > 1.96:
+		if np.abs((beta-true_beta)/rob) > 1.96:
 			robustlist.append(1)
 		else:
 			robustlist.append(0)
 
-		if np.abs(beta/clus) > 1.96:
+		if np.abs((beta-true_beta)/clus) > 1.96:
 			clustlist.append(1)
 		else:
 			clustlist.append(0)
@@ -311,10 +310,10 @@ def get_errors(N, M, theta, rho = 0.5):
 	# hi_quantile = np.squeeze(np.quantile(betas, .975, axis=0))
 	# return low_quantile, mean, hi_quantile
 
-thetalist = [-2, 0, 1]
+rholist = [0, .5, 1]
 
-for theta in thetalist:
-	print(get_errors(20, 5, theta))
+for rho in rholist:
+	print(get_errors(20, 100, rho))
 
 	# lo2, mean2, hi2 = monte_carlo(10000, 50, theta)
 
