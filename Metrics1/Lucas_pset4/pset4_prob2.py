@@ -15,7 +15,6 @@ import math
 import copy
 import matplotlib.pyplot as plt
 from scipy.stats import randint
-import statsmodels.formula.api as sm
 # for exact replication
 np.random.seed(1)
 
