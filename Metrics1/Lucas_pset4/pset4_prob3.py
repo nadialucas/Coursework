@@ -58,6 +58,9 @@ def synthetic_control(donors, treated, treatment):
 	model = gp.Model()
 
 	numdonors = donors.shape[1]
+	print(synthetic.shape)
+	print(objcon.shape)
+	print(Q.shape)
 
 	weights = model.addMVar(numdonors, lb = 0, ub = 1)
 	# weights = model.addVars(numdonors, 1, lb = 0, ub = 1)
@@ -70,6 +73,7 @@ def synthetic_control(donors, treated, treatment):
 	for v in model.getVars():
 		weights.append(v.x)
 	return(np.array(weights))
+
 
 
 
@@ -103,7 +107,6 @@ min_preperiods = math.ceil(treatment/2)
 
 
 def cv_masc(treated, donors, treatment, m, min_preperiods, phis=[]):
-	print(treatment)
 	weights_f = np.ones(treatment-2-min_preperiods)
 	set_f = list(range(min_preperiods, treatment-1))
 
@@ -158,37 +161,34 @@ def masc(treated, donors, treatment, m_tune_params, min_preperiods):
 
 
 def weights_from_pi(treated, donors, treatment, pi):
-	donors = donors[donors.index < treatment].to_numpy()
-	treated = treated[treated.index < treatment].to_numpy()
-	synthetic = -2*np.dot(treated.T, donors)
-	objcon = np.dot(treated.T, treated)
-	Q = np.dot(donors.T, donors)
-
-	objconpi = objcon * (1-pi)
-	Qtpi = Q * (1-pi)
-	syntheticpi = synthetic*(1-pi)
-
-	distance = np.power(donors - treated, 2)
-	numdonors = donors.shape[1]
-	numtimes = donors.shape[0]
-	ones = np.ones((1, numtimes))
-	distance_norm = np.dot(ones, distance)
-	distance_normpi = pi * distance_norm
-	model = gp.Model()
+	# given pi, modifies the original synthetic control weights
+	donors = donors[donors.index < treatment].to_numpy().T
+	treated = treated[treated.index < treatment].to_numpy().T
 	
+	objcon = (1-pi) * np.dot(treated, treated.T)
+	Q = (1-pi) * np.dot(donors, donors.T)
+
+	print(objcon.shape)
+	print(Q.shape)
+
+
+	distance_norm = []
+	for i in range(donors.shape[0]):
+		distance_norm.append(np.linalg.norm(donors[i] - treated.flatten())**2)
+	synthetic = -2*(1-pi) * np.dot(treated, donors.T) + pi*np.array(distance_norm)
+	print(synthetic.shape)
+	print(synthetic)
+
+	model = gp.Model()
+
+	numdonors = donors.shape[0]
 
 
 	
 	weights = model.addMVar(numdonors, lb = 0, ub = 1)
 
 	model.addConstr((sum(weights[i] for i in range(numdonors)) == 1), name = 'weights')
-	# extrapolation biasm
-	# model.setObjective((  (1-pi) * (objcon + sum(synthetic[i] * weights[i] 
-	# 	for i in range(numdonors)) + sum( weights[i]*sum(weights[j]*Q[i][j] 
-	# 		for j in range(numdonors))  
-	# 	for i in range(numdonors)) )) , GRB.MINIMIZE)
-	# model.setObjective(( (1-pi) * sum(treated[i] - sum(weights[i] * donors[i][j] for j in numdonors) for i in ))
-	model.setObjective( (objconpi + syntheticpi @ weights + weights @ Qtpi @ weights + distance_normpi @ weights), GRB.MINIMIZE)
+	model.setObjective( (synthetic @ weights + weights @ Q @ weights), GRB.MINIMIZE)
 
 	model.optimize()
 
@@ -224,12 +224,11 @@ def loss_from_pi(treated, donors, treatment, min_preperiods, pi):
 	gamma_sc_pi = np.array(gamma_sc_pi)
 	Y_treated = np.array(Y_treated)
 
-	error = np.sum(np.power(Y_treated - gamma_sc_pi, 2))
+	error = np.linalg.norm(Y_treated - gamma_sc_pi)
 	return error
 
 def penalized_sc(treated, donors, treatment, min_preperiods):
-	pis = np.arange(0, .2, .01).tolist()
-	print(pis)
+	pis = np.arange(0, .2, .005).tolist()
 	errors = []
 	for pi in pis:
 		errs = loss_from_pi(treated, donors, treatment, min_preperiods, pi)
@@ -237,9 +236,18 @@ def penalized_sc(treated, donors, treatment, min_preperiods):
 
 	min_index = errors.index(min(errors))
 	pi_opt = pis[min_index]
+	pi_opt = .005
+
+	print(pi_opt)
 
 	weights = weights_from_pi(treated, donors, treatment, pi_opt)
+
+	print(pi_opt)
 	return weights
+
+synthetic_control(df_donors, df_treated, treatment)
+
+penalized_sc(df_treated, df_donors, treatment, min_preperiods)
 
 
 

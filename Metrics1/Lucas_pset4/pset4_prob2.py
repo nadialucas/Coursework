@@ -47,6 +47,7 @@ class estimate:
 		# returns regular standard errors with no heteroskedasticity adjustment
 		s2 = np.dot(self.e.T, self.e)/(self.N - self.k)
 		sd = np.sqrt(np.multiply(s2, np.diag(self.XpXi)))
+		Sigma = np.linalg.solve(X.T, X)
 		return sd
 
 	def robust(self):
@@ -102,10 +103,12 @@ class estimate:
 		beta1 = np.linalg.solve(Xno1.T.dot(Xno1), Xno1.T.dot(Y1))
 		# use the beta to construct the Us
 		U = Y1 - np.dot(Xno1, beta1)
+		# boostrap the Us
 		rand_sign = 2*randint.rvs(0, 1, size = self.N).reshape(self.N, 1) - 1
 		newU = np.multiply(U, rand_sign)
-		Ywild = np.dot(Xno1, beta1) + newU
-
+		# construct the wild Y
+		Ywild = np.dot(Xno1, beta1) + X1 * true_beta + newU
+		# get the new beta from the wild Y
 		beta_wild = np.dot(self.XpXi, np.dot(self.X.T, Ywild))
 
 		error = Ywild - np.dot(self.X, beta_wild)
@@ -222,7 +225,7 @@ def monte_carlo(N, M, theta, rho = 0.5):
 # 	if theta == 1:
 # 		ax.legend(loc='upper left', fontsize = 9)
 # 	else:
-# 		ax.legend(loc='upper left', fontsize = 9)
+# 		ax.legend(loc='lower left', fontsize = 9)
 # 	ax.set(xlabel='Relative time', ylabel='Coefficient', title = 'Theta: '+str(theta))
 
 # 	fig.savefig("partb_theta"+str(theta)+".png")
@@ -314,29 +317,29 @@ def get_errors(N, M, rho, theta=1, true_beta = (math.sin(1)-math.sin(-1)-math.si
 		clus = clust_robust_errors[11]
 		wild = wild_errors[11]
 
-		# print(beta, std)
+		print(beta, std)
 
-		if np.abs((beta-true_beta)/std) > 1.96:
-			stdlist.append(1)
-		else:
-			stdlist.append(0)
+	# 	if np.abs((beta-true_beta)/std) > 1.96:
+	# 		stdlist.append(1)
+	# 	else:
+	# 		stdlist.append(0)
 
-		if np.abs((beta-true_beta)/rob) > 1.96:
-			robustlist.append(1)
-		else:
-			robustlist.append(0)
+	# 	if np.abs((beta-true_beta)/rob) > 1.96:
+	# 		robustlist.append(1)
+	# 	else:
+	# 		robustlist.append(0)
 
-		if np.abs((beta-true_beta)/clus) > 1.96:
-			clustlist.append(1)
-		else:
-			clustlist.append(0)
+	# 	if np.abs((beta-true_beta)/clus) > 1.96:
+	# 		clustlist.append(1)
+	# 	else:
+	# 		clustlist.append(0)
 
-		if np.abs((beta-true_beta)/wild) > 1.96:
-			wildlist.append(1)
-		else:
-			wildlist.append(0)
+	# 	if np.abs((beta-true_beta)/wild) > 1.96:
+	# 		wildlist.append(1)
+	# 	else:
+	# 		wildlist.append(0)
 
-	return np.mean(np.array(stdlist)), np.mean(np.array(robustlist)), np.mean(np.array(clustlist)), np.mean(np.array(wildlist))
+	# return np.mean(np.array(stdlist)), np.mean(np.array(robustlist)), np.mean(np.array(clustlist)), np.mean(np.array(wildlist))
 
 
 	# betas = np.array(rel_betas)
