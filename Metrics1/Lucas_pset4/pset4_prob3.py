@@ -259,7 +259,7 @@ sc_weights = synthetic_control(df_donors, df_treated, treatment)
 sc_weights = np.expand_dims(sc_weights, axis = 1)
 pensc_weights = penalized_sc(df_treated, df_donors, treatment, min_preperiods)
 pensc_weights = np.expand_dims(pensc_weights, axis = 1)
-
+print(pensc_weights)
 masc_weights = np.array(opt_phi * ma_weights + (1-opt_phi) * sc_weights)
 
 Y_control_ma = np.dot(ma_weights.T, df_donors.to_numpy().T)
