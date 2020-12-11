@@ -188,7 +188,7 @@ def weights_from_pi(treated, donors, treatment, pi):
 	weights = model.addMVar(numdonors, lb = 0, ub = 1)
 
 	model.addConstr((sum(weights[i] for i in range(numdonors)) == 1), name = 'weights')
-	model.setObjective( (synthetic @ weights + weights @ Q @ weights), GRB.MINIMIZE)
+	model.setObjective( (objcon + synthetic @ weights + weights @ Q @ weights), GRB.MINIMIZE)
 
 	model.optimize()
 
@@ -236,8 +236,6 @@ def penalized_sc(treated, donors, treatment, min_preperiods):
 
 	min_index = errors.index(min(errors))
 	pi_opt = pis[min_index]
-	pi_opt = .005
-
 	print(pi_opt)
 
 	weights = weights_from_pi(treated, donors, treatment, pi_opt)
@@ -266,7 +264,7 @@ masc_weights = np.array(opt_phi * ma_weights + (1-opt_phi) * sc_weights)
 
 Y_control_ma = np.dot(ma_weights.T, df_donors.to_numpy().T)
 Y_control_sc = np.dot(sc_weights.T, df_donors.to_numpy().T)
-Y_control_psc = np.dot(sc_weights.T, df_donors.to_numpy().T)
+Y_control_psc = np.dot(pensc_weights.T, df_donors.to_numpy().T)
 
 
 Y_control = np.dot(masc_weights.T, df_donors.to_numpy().T)
@@ -294,14 +292,14 @@ fig.savefig("fig10.png")
 plt.show()
 
 fig, ax = plt.subplots()
-Y1 = 1000*(Y_control - Y_control_ma).T
-Y2 = 1000*(Y_control - Y_control_sc).T
-Y3 = 1000*(Y_control - Y_control_psc).T
-ax.plot(X, Y1, color = 'coral', label = 'Matching')
-ax.plot(X, Y2, color = 'dodgerblue', label = 'Synthetic Control and Penalized synthetic control')
+Y1 = 1000*(Y_control - Y_control_ma).T[14:]
+Y2 = 1000*(Y_control - Y_control_sc).T[14:]
+Y3 = 1000*(Y_control - Y_control_psc).T[14:]
+ax.plot(X[14:], Y1, color = 'coral', label = 'Matching')
+ax.plot(X[14:], Y2, color = 'dodgerblue', label = 'Synthetic Control')
 ax.axhline(y=0, xmin = 0.0, xmax = 1.0, linestyle = '-', linewidth = .6, color = 'black')
-ax.plot(X, Y3, color = 'dodgerblue')
-ax.legend(loc = 'lower left', fontsize = 8)
+ax.plot(X[14:], Y3, color = 'black', label = 'Penalized Synthetic Control')
+ax.legend(loc = 'upper left', fontsize = 8)
 ax.set(xlabel = 'Year', ylabel = 'Difference in Effect (per capita GDP)')
 fig.savefig("fig11.png")
 
